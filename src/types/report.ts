@@ -4,5 +4,6 @@ export type LocalReport = {
   timestamp: string;
   lat: number;
   long: number;
+  user_text: string;
   is_synced: number;
 };

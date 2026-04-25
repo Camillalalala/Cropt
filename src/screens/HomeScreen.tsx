@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Alert, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Alert, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import * as Speech from 'expo-speech';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { createReport } from '../db/database';
@@ -15,6 +15,7 @@ export function HomeScreen({ navigation }: Props) {
   const [isSyncing, setIsSyncing] = useState(false);
   const [latestResult, setLatestResult] = useState<ClassificationResult | null>(null);
   const [mitigationText, setMitigationText] = useState<string>('');
+  const [scanText, setScanText] = useState('');
 
   const speakMitigation = async (text: string) => {
     const available = await Speech.isSpeakingAsync().catch(() => false);
@@ -47,6 +48,7 @@ export function HomeScreen({ navigation }: Props) {
         diseaseId: result.diseaseId,
         lat: 34.0522,
         long: -118.2437,
+        userText: scanText.trim(),
         isSynced: 0,
       });
 
@@ -64,6 +66,7 @@ export function HomeScreen({ navigation }: Props) {
             : 'Scan saved locally, but cloud sync failed.'
         );
       }
+      setScanText('');
     } catch (error) {
       console.error(error);
       Alert.alert('Error', 'Could not save mock report.');
@@ -96,6 +99,15 @@ export function HomeScreen({ navigation }: Props) {
       <Text style={styles.subtitle}>
         Use this as the central shell while teammates plug in features.
       </Text>
+
+      <TextInput
+        value={scanText}
+        onChangeText={setScanText}
+        placeholder="Optional scan notes to sync (e.g. field conditions)"
+        placeholderTextColor="#6b7280"
+        style={styles.textInput}
+        multiline
+      />
 
       <Pressable
         style={({ pressed }) => [
@@ -172,6 +184,18 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     borderRadius: 10,
     alignItems: 'center',
+  },
+  textInput: {
+    width: '100%',
+    minHeight: 80,
+    borderWidth: 1,
+    borderColor: '#cbd5e1',
+    borderRadius: 10,
+    backgroundColor: '#ffffff',
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    color: '#111827',
+    textAlignVertical: 'top',
   },
   secondaryButton: {
     width: '100%',

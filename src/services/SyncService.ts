@@ -26,6 +26,7 @@ function mapReportToSupabasePayload(report: LocalReport) {
     timestamp: report.timestamp,
     latitude: report.lat,
     longitude: report.long,
+    user_text: report.user_text,
     is_synced: true,
   };
 }

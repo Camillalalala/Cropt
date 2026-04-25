@@ -47,6 +47,9 @@ export function ReportsScreen() {
                 Lat/Lon: {item.lat.toFixed(4)}, {item.long.toFixed(4)}
               </Text>
               <Text style={styles.reportMeta}>
+                Note: {item.user_text.trim() ? item.user_text : '(none)'}
+              </Text>
+              <Text style={styles.reportMeta}>
                 Synced: {item.is_synced === 1 ? 'Yes' : 'No'}
               </Text>
             </View>

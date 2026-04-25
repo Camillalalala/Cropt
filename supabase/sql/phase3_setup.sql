@@ -9,12 +9,16 @@ CREATE TABLE IF NOT EXISTS public.scan_reports (
   timestamp TIMESTAMPTZ NOT NULL,
   latitude DOUBLE PRECISION NOT NULL,
   longitude DOUBLE PRECISION NOT NULL,
+  user_text TEXT NOT NULL DEFAULT '',
   is_synced BOOLEAN NOT NULL DEFAULT true,
   geom GEOGRAPHY(POINT, 4326) GENERATED ALWAYS AS (
     ST_SetSRID(ST_MakePoint(longitude, latitude), 4326)::geography
   ) STORED,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+ALTER TABLE public.scan_reports
+ADD COLUMN IF NOT EXISTS user_text TEXT NOT NULL DEFAULT '';
 
 ALTER TABLE public.scan_reports ENABLE ROW LEVEL SECURITY;
 
