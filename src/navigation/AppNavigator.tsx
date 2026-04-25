@@ -1,6 +1,6 @@
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { HomeScreen } from '../screens/HomeScreen';
-import { ReportsScreen } from '../screens/ReportsScreen';
+import { FarmerHomeScreen } from '../components/FarmerHomeScreen';
+import { FarmerReportsScreen } from '../components/FarmerReportsScreen';
 import { ExpoGoMapScreen } from '../components/ExpoGoMapScreen';
 
 export type RootStackParamList = {
@@ -16,12 +16,12 @@ export function AppNavigator() {
     <Stack.Navigator initialRouteName="Home">
       <Stack.Screen
         name="Home"
-        component={HomeScreen}
+        component={FarmerHomeScreen}
         options={{ title: 'TerraSignal' }}
       />
       <Stack.Screen
         name="LocalReports"
-        component={ReportsScreen}
+        component={FarmerReportsScreen}
         options={{ title: 'Local Reports' }}
       />
       <Stack.Screen

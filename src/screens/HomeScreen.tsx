@@ -9,7 +9,9 @@ import {
   Text,
   TextInput,
   View,
+  TouchableOpacity,
 } from 'react-native';
+import { MaterialCommunityIcons, FontAwesome, Ionicons } from '@expo/vector-icons';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
@@ -310,24 +312,57 @@ export function HomeScreen({ navigation }: Props) {
   const currentDiseaseId = latestResult?.diseaseId ?? '';
   const currentDiseaseLabel = latestResult ? getDiseaseInfo(latestResult.diseaseId).label : '';
 
+
+  // --- Redesigned Home Screen with Icon Navigation ---
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
       <View style={styles.hero}>
         <View style={styles.heroHeader}>
           <View style={styles.heroTitleBlock}>
             <Text style={styles.eyebrow}>Offline Reflex</Text>
-            <Text style={styles.title}>TerraSignal Field Scanner</Text>
+            <Text style={styles.title}>TerraSignal</Text>
           </View>
           <View style={[styles.networkBadge, isOnline ? styles.networkOnline : styles.networkOffline]}>
             <Text style={styles.networkText}>{isOnline ? 'Online' : 'Offline'}</Text>
           </View>
         </View>
-        <Text style={styles.subtitle}>
-          Capture or attach a crop image, pair it with a stable demo diagnosis profile, and keep the
-          report ready for sync when connectivity returns.
-        </Text>
-
-        {/* Demo toggle */}
+        <Text style={styles.subtitle}>Identify crop diseases easily</Text>
+        {/* Large Icon Navigation */}
+        <View style={styles.iconNavRow}>
+          <TouchableOpacity
+            style={styles.iconNavButton}
+            onPress={handleOpenCamera}
+            accessibilityLabel="Scan Crop"
+          >
+            <MaterialCommunityIcons name="camera" size={48} color="#f8fafc" />
+            <Text style={styles.iconNavLabel}>Scan</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.iconNavButton}
+            onPress={() => navigation.navigate('LocalReports')}
+            accessibilityLabel="View Reports"
+          >
+            <FontAwesome name="file-text-o" size={44} color="#f8fafc" />
+            <Text style={styles.iconNavLabel}>Reports</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.iconNavButton}
+            onPress={() => setShowVoiceAgent(true)}
+            accessibilityLabel="Voice Assistant"
+          >
+            <Ionicons name="mic-circle" size={48} color="#f8fafc" />
+            <Text style={styles.iconNavLabel}>Voice</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={styles.iconNavButton}
+            onPress={() => Alert.alert('Help', 'Tap the camera to scan, file to view reports, mic to talk, or question for help.')}
+            accessibilityLabel="Help"
+          >
+            <Ionicons name="help-circle" size={48} color="#f8fafc" />
+            <Text style={styles.iconNavLabel}>Help</Text>
+          </TouchableOpacity>
+        </View>
+        {/* Demo toggle remains for advanced users */}
         <View style={styles.demoToggleRow}>
           <View style={styles.demoToggleLabel}>
             <Text style={styles.demoToggleTitle}>Demo Offline Mode</Text>
@@ -343,6 +378,26 @@ export function HomeScreen({ navigation }: Props) {
           />
         </View>
       </View>
+  // --- Add new styles for icon navigation ---
+  iconNavRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginVertical: 18,
+    gap: 8,
+  },
+  iconNavButton: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    flex: 1,
+    paddingVertical: 8,
+  },
+  iconNavLabel: {
+    color: '#f8fafc',
+    fontSize: 16,
+    marginTop: 4,
+    fontWeight: '700',
+  },
 
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
