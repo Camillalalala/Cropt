@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   Alert,
   Image,
@@ -9,6 +9,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as ImagePicker from 'expo-image-picker';
 import * as Network from 'expo-network';
 import * as Speech from 'expo-speech';
@@ -53,6 +54,8 @@ function SamplePreview({ sample }: { sample: DemoScanSample }) {
 }
 
 export function HomeScreen({ navigation }: Props) {
+  const cameraRef = useRef<CameraView | null>(null);
+  const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const [selectedSampleId, setSelectedSampleId] = useState(demoScanLibrary[0]?.id ?? '');
   const [pickedImageUri, setPickedImageUri] = useState('');
   const [latestResult, setLatestResult] = useState<ClassificationResult | null>(null);
@@ -61,6 +64,8 @@ export function HomeScreen({ navigation }: Props) {
   const [isSaving, setIsSaving] = useState(false);
   const [isSyncing, setIsSyncing] = useState(false);
   const [isPickingImage, setIsPickingImage] = useState(false);
+  const [isCapturing, setIsCapturing] = useState(false);
+  const [isCameraOpen, setIsCameraOpen] = useState(false);
   const [isOnline, setIsOnline] = useState(false);
   const [showVoiceAgent, setShowVoiceAgent] = useState(false);
   const [syncMessage, setSyncMessage] = useState('Offline-first storage armed. New field scans save locally.');
@@ -116,12 +121,49 @@ export function HomeScreen({ navigation }: Props) {
 
       if (!result.canceled && result.assets[0]?.uri) {
         setPickedImageUri(result.assets[0].uri);
+        setIsCameraOpen(false);
       }
     } catch (error) {
       console.error(error);
       Alert.alert('Image picker failed', 'Could not open the photo library right now.');
     } finally {
       setIsPickingImage(false);
+    }
+  };
+
+  const handleOpenCamera = async () => {
+    const permission = cameraPermission?.granted
+      ? cameraPermission
+      : await requestCameraPermission();
+
+    if (!permission.granted) {
+      Alert.alert(
+        'Camera access needed',
+        'Allow camera access so TerraSignal can capture crop images in the field.'
+      );
+      return;
+    }
+
+    setIsCameraOpen(true);
+  };
+
+  const handleCapturePhoto = async () => {
+    if (!cameraRef.current || isCapturing) {
+      return;
+    }
+
+    try {
+      setIsCapturing(true);
+      const photo = await cameraRef.current.takePictureAsync({ quality: 0.8, shutterSound: false });
+      if (photo.uri) {
+        setPickedImageUri(photo.uri);
+        setIsCameraOpen(false);
+      }
+    } catch (error) {
+      console.error(error);
+      Alert.alert('Capture failed', 'Could not capture a photo from the camera.');
+    } finally {
+      setIsCapturing(false);
     }
   };
 
@@ -132,7 +174,7 @@ export function HomeScreen({ navigation }: Props) {
     }
 
     if (!pickedImageUri) {
-      Alert.alert('Photo required', 'Choose a crop image before running the local diagnosis.');
+      Alert.alert('Photo required', 'Capture or choose a crop image before running the local diagnosis.');
       return;
     }
 
@@ -211,45 +253,84 @@ export function HomeScreen({ navigation }: Props) {
           </View>
         </View>
         <Text style={styles.subtitle}>
-          Attach a crop image, pair it with a stable demo diagnosis profile, and keep the report
-          ready for sync when connectivity returns.
+          Capture or attach a crop image, pair it with a stable demo diagnosis profile, and keep the
+          report ready for sync when connectivity returns.
         </Text>
       </View>
 
       <View style={styles.section}>
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Crop Image</Text>
-          <Text style={styles.sectionHint}>Pick a real photo from the gallery for this field scan.</Text>
+          <Text style={styles.sectionHint}>Capture a live field photo or choose one from the gallery.</Text>
         </View>
 
-        <Pressable
-          style={({ pressed }) => [
-            styles.imagePickerCard,
-            pressed && styles.buttonPressed,
-            isPickingImage && styles.buttonDisabled,
-          ]}
-          onPress={handlePickImage}
-          disabled={isPickingImage}
-        >
-          {pickedImageUri ? (
-            <Image source={{ uri: pickedImageUri }} style={styles.pickedImage} />
-          ) : (
-            <View style={styles.emptyImageState}>
-              <Text style={styles.emptyImageTitle}>No crop image attached</Text>
-              <Text style={styles.emptyImageBody}>
-                Choose a gallery image to make the scan flow feel real in demo.
-              </Text>
+        {isCameraOpen ? (
+          <View style={styles.cameraCard}>
+            <CameraView ref={cameraRef} style={styles.cameraView} facing="back" />
+            <View style={styles.cameraActions}>
+              <Pressable
+                style={({ pressed }) => [styles.ghostButton, pressed && styles.buttonPressed]}
+                onPress={() => setIsCameraOpen(false)}
+              >
+                <Text style={styles.ghostButtonText}>Close Camera</Text>
+              </Pressable>
+              <Pressable
+                style={({ pressed }) => [
+                  styles.primaryButton,
+                  styles.captureButton,
+                  pressed && styles.buttonPressed,
+                  isCapturing && styles.buttonDisabled,
+                ]}
+                onPress={handleCapturePhoto}
+                disabled={isCapturing}
+              >
+                <Text style={styles.primaryButtonText}>
+                  {isCapturing ? 'Capturing...' : 'Capture Photo'}
+                </Text>
+              </Pressable>
             </View>
-          )}
-        </Pressable>
+          </View>
+        ) : (
+          <Pressable
+            style={({ pressed }) => [
+              styles.imagePickerCard,
+              pressed && styles.buttonPressed,
+              (isPickingImage || isCapturing) && styles.buttonDisabled,
+            ]}
+            onPress={pickedImageUri ? undefined : handleOpenCamera}
+            disabled={Boolean(pickedImageUri) || isPickingImage || isCapturing}
+          >
+            {pickedImageUri ? (
+              <Image source={{ uri: pickedImageUri }} style={styles.pickedImage} />
+            ) : (
+              <View style={styles.emptyImageState}>
+                <Text style={styles.emptyImageTitle}>No crop image attached</Text>
+                <Text style={styles.emptyImageBody}>
+                  Open the camera for a live field photo or pull one from the gallery.
+                </Text>
+              </View>
+            )}
+          </Pressable>
+        )}
 
         <View style={styles.imageActions}>
           <Pressable
             style={({ pressed }) => [styles.secondaryButton, pressed && styles.buttonPressed]}
+            onPress={handleOpenCamera}
+          >
+            <Text style={styles.secondaryButtonText}>Open Camera</Text>
+          </Pressable>
+          <Pressable
+            style={({ pressed }) => [
+              styles.secondaryButton,
+              pressed && styles.buttonPressed,
+              isPickingImage && styles.buttonDisabled,
+            ]}
             onPress={handlePickImage}
+            disabled={isPickingImage}
           >
             <Text style={styles.secondaryButtonText}>
-              {isPickingImage ? 'Opening Library...' : pickedImageUri ? 'Replace Photo' : 'Choose Photo'}
+              {isPickingImage ? 'Opening Library...' : 'Choose Photo'}
             </Text>
           </Pressable>
           <Pressable
@@ -477,6 +558,23 @@ const styles = StyleSheet.create({
     borderColor: '#d1d5db',
     backgroundColor: '#f9fafb',
   },
+  cameraCard: {
+    borderRadius: 14,
+    overflow: 'hidden',
+    backgroundColor: '#0f172a',
+  },
+  cameraView: {
+    height: 280,
+  },
+  cameraActions: {
+    flexDirection: 'row',
+    gap: 10,
+    padding: 12,
+    backgroundColor: '#0f172a',
+  },
+  captureButton: {
+    flex: 1,
+  },
   pickedImage: {
     width: '100%',
     height: 220,
@@ -507,6 +605,7 @@ const styles = StyleSheet.create({
     minWidth: 96,
     backgroundColor: '#f3f4f6',
     paddingVertical: 14,
+    paddingHorizontal: 12,
     borderRadius: 12,
     alignItems: 'center',
   },
@@ -633,6 +732,7 @@ const styles = StyleSheet.create({
   primaryButton: {
     backgroundColor: '#166534',
     paddingVertical: 14,
+    paddingHorizontal: 16,
     borderRadius: 12,
     alignItems: 'center',
   },
@@ -649,6 +749,7 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: '#e5e7eb',
     paddingVertical: 14,
+    paddingHorizontal: 12,
     borderRadius: 12,
     alignItems: 'center',
   },
