@@ -1,7 +1,7 @@
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { HomeScreen } from '../screens/HomeScreen';
 import { ReportsScreen } from '../screens/ReportsScreen';
-import { MapScreen } from '../screens/MapScreen';
+import { ExpoGoMapScreen } from '../components/ExpoGoMapScreen';
 
 export type RootStackParamList = {
   Home: undefined;
@@ -26,7 +26,7 @@ export function AppNavigator() {
       />
       <Stack.Screen
         name="Map"
-        component={MapScreen}
+        component={ExpoGoMapScreen}
         options={{ title: 'Community Disease Map' }}
       />
     </Stack.Navigator>

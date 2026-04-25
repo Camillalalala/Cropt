@@ -12,6 +12,11 @@ Fix:
 This means you are using a library (likely react-native-maps) that requires native code, which is not available in Expo Go.
 You must use a development build (not Expo Go) to use this module.
 Run:
+npx expo run:android
 or
+npx expo run:ios
 to create a development build.
+
+If android doesn't work, you might need to install Android Studio.
+
 
