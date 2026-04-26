@@ -84,9 +84,10 @@ export function DiagnosticScreen({ route, navigation }: Props) {
       await Speech.stop();
       return;
     }
-    Speech.speak(diseaseInfo.mitigationSteps, { language: 'en-US', rate: 0.8 });
+    const text = `Your plant seems to have ${diseaseInfo.label}. ${diseaseInfo.steps.join('. ')}`;
+    Speech.speak(text, { language: 'en-US', rate: 0.8 });
   };
-
+  
   const handleNotify = () => {
     navigation.navigate('Notify', { diseaseId, confidence, imageUri, sampleId });
   };

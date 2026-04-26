@@ -26,6 +26,8 @@ import type { RootStackParamList } from '../navigation/AppNavigator';
 import { classifierService, type ClassificationResult } from '../services/ClassifierService';
 import { syncPendingReports } from '../services/SyncService';
 import { registerForPushNotifications, saveDeviceToken } from '../services/NotificationService';
+import { useLocale } from '../hooks/useLocale';
+import { useScreenInstructions } from '../hooks/useScreenInstructions';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
 
@@ -33,6 +35,8 @@ const CENTER_BUTTON_SIZE = 200;
 const CENTER_RING_SIZE = 280;
 
 export function HomeScreen({ navigation }: Props) {
+  useScreenInstructions('Home');
+  const locale = useLocale();
   const insets = useSafeAreaInsets();
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
 
