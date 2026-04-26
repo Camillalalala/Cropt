@@ -73,6 +73,17 @@
           "icon": "./assets/icon.png",
           "color": "#163020"
         }
+      ],
+      [
+        "expo-asset",
+        {
+          "assets": [
+            "./assets/leaf1.png",
+            "./assets/leaf2.png",
+            "./assets/leaf3.png",
+            "./assets/leaf4.png"
+          ]
+        }
       ]
     ]
   }

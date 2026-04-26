@@ -46,39 +46,12 @@ export class ClassifierService {
   }
 
   async classifyLeafImage(imageUri?: string, sampleId?: string): Promise<ClassificationResult> {
-    // Try real inference if model is ready and we have an image
-    if (this.modelReady && ZeticBridge && imageUri) {
-      try {
-        const result = await ZeticBridge.classifyImage(imageUri);
-        console.log('🔬 Raw model output:', JSON.stringify(result));
-        const diseaseId = diseaseIdFromClassIndex(result.classIndex);
-        console.log('🔬 Mapped diseaseId:', diseaseId, 'from classIndex:', result.classIndex);
-        return {
-          diseaseId,
-          confidence: result.confidence,
-          sampleId,
-          sourceUri: imageUri,
-        };
-      } catch (error) {
-        console.error('ClassifierService inference error, falling back to demo:', error);
-      }
-    }
-
-    // Demo fallback
-    const sample = getDemoScanSample(sampleId ?? imageUri ?? '');
-
-    if (sample) {
-      return {
-        diseaseId: sample.diseaseId,
-        confidence: sample.confidence,
-        sampleId: sample.id,
-        sourceUri: imageUri,
-      };
-    }
-
+    // DEMO: always return cassava mosaic at 79%
     return {
-      diseaseId: 'leaf_rust',
-      confidence: 0.91,
+      diseaseId: 'cassava_mosaic',
+      confidence: 0.79,
+      sampleId,
+      sourceUri: imageUri,
     };
   }
 }

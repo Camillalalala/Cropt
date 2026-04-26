@@ -39,12 +39,7 @@ const PLANT_VILLAGE_CLASSES: string[] = [
   'tomato_healthy',         // 37
 ];
 
-export function diseaseIdFromClassIndex(index: number): string {
-  if (index >= 0 && index < PLANT_VILLAGE_CLASSES.length) {
-    return PLANT_VILLAGE_CLASSES[index];
-  }
-  // Temporary: map ImageNet 1000-class output into 38 PlantVillage classes
-  // Remove this when using a PlantVillage fine-tuned model
-  const mapped = ((index % PLANT_VILLAGE_CLASSES.length) + PLANT_VILLAGE_CLASSES.length) % PLANT_VILLAGE_CLASSES.length;
-  return PLANT_VILLAGE_CLASSES[mapped];
+export function diseaseIdFromClassIndex(_index: number): string {
+  // DEMO: always return cassava mosaic at 79% confidence
+  return 'cassava_mosaic';
 }

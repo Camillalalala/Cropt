@@ -1,6 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
 import {
-  Alert,
   Animated,
   Dimensions,
   Easing,
@@ -12,14 +11,18 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { Audio } from 'expo-av';
+import * as FileSystem from 'expo-file-system/legacy';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Ionicons } from '@expo/vector-icons';
+import { Asset } from 'expo-asset';
+import * as Network from 'expo-network';
 import * as Speech from 'expo-speech';
-import * as Location from 'expo-location';
 import { getDiseaseInfo } from '../data/diseaseLookup';
-import { createReport } from '../db/database';
-import { syncPendingReports } from '../services/SyncService';
+import { llmService } from '../services/LLMService';
 import type { RootStackParamList } from '../navigation/AppNavigator';
+
+const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL ?? 'http://localhost:3000';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Diagnostic'>;
 
@@ -27,8 +30,8 @@ const { width } = Dimensions.get('window');
 const CARD_GAP = 12;
 const CARD_WIDTH = (width - 40 - CARD_GAP) / 2;
 
-// Static requires evaluated at bundle time — stubs exist in assets/
-const LEAF_ASSETS: Record<1 | 2 | 3 | 4, ReturnType<typeof require>> = {
+// Pre-load leaf assets via expo-asset so they resolve even if native cache is stale
+const LEAF_MODULES: Record<number, number> = {
   1: require('../../assets/leaf1.png'),
   2: require('../../assets/leaf2.png'),
   3: require('../../assets/leaf3.png'),
@@ -43,10 +46,19 @@ const SEVERITY_COLORS: Record<string, string> = {
 };
 
 export function DiagnosticScreen({ route, navigation }: Props) {
-  const { diseaseId, confidence, imageUri, sampleId } = route.params;
+  const { diseaseId, confidence, imageUri, sampleId, conversationTranscript } = route.params;
   const diseaseInfo = getDiseaseInfo(diseaseId);
-  const [notifying, setNotifying] = useState(false);
-  const [leafErrors, setLeafErrors] = useState<Record<number, boolean>>({});
+  const [leafSources, setLeafSources] = useState<Record<number, { uri: string } | number>>({
+    1: LEAF_MODULES[1],
+    2: LEAF_MODULES[2],
+    3: LEAF_MODULES[3],
+    4: LEAF_MODULES[4],
+  });
+  const [generatedSteps, setGeneratedSteps] = useState<string[]>(diseaseInfo.steps);
+  const [streamingText, setStreamingText] = useState('');
+  const [isGenerating, setIsGenerating] = useState(false);
+  const ttsSound = useRef<Audio.Sound | null>(null);
+  const cancelLLM = useRef<(() => void) | null>(null);
 
   const targetPct = Math.round(confidence * 100);
   const severityColor = SEVERITY_COLORS[diseaseInfo.severity] ?? '#dd5151';
@@ -55,6 +67,29 @@ export function DiagnosticScreen({ route, navigation }: Props) {
   const progressAnim = useRef(new Animated.Value(0)).current;
   // Counting number display
   const [displayPct, setDisplayPct] = useState(0);
+
+  // Try to resolve leaf assets via expo-asset for fresh URIs; keep require() as fallback
+  useEffect(() => {
+    (async () => {
+      const srcs: Record<number, { uri: string } | number> = {};
+      for (const key of [1, 2, 3, 4]) {
+        try {
+          const asset = Asset.fromModule(LEAF_MODULES[key]);
+          await asset.downloadAsync();
+          const localUri = asset.localUri ?? asset.uri;
+          if (localUri) {
+            srcs[key] = { uri: localUri };
+          } else {
+            srcs[key] = LEAF_MODULES[key];
+          }
+        } catch {
+          // Offline or download failed — fall back to bundled require()
+          srcs[key] = LEAF_MODULES[key];
+        }
+      }
+      setLeafSources(srcs);
+    })();
+  }, []);
 
   useEffect(() => {
     // Progress bar fill
@@ -74,47 +109,156 @@ export function DiagnosticScreen({ route, navigation }: Props) {
     const timer = setInterval(() => {
       step += 1;
       const progress = Math.min(step / STEPS, 1);
-      // ease-out quad
       const eased = 1 - Math.pow(1 - progress, 2);
       setDisplayPct(Math.round(eased * targetPct));
       if (step >= STEPS) clearInterval(timer);
     }, stepMs);
 
-    return () => clearInterval(timer);
+    // Speak the 3 steps aloud after a short delay
+    const stepsText = diseaseInfo.steps.join('. ');
+    // Start native TTS immediately as a fallback — it will be stopped if ElevenLabs succeeds
+    const speakTimer = setTimeout(() => {
+      Speech.speak(stepsText, { rate: 0.9 });
+    }, 400);
+
+    // Try ElevenLabs in parallel — if it works, stop native TTS and play ElevenLabs instead
+    const elevenLabsTimer = setTimeout(() => {
+      const networkTimeout = new Promise<boolean>((resolve) => {
+        const t = setTimeout(() => resolve(false), 2000);
+        Network.getNetworkStateAsync()
+          .then((net) => { clearTimeout(t); resolve(net.isInternetReachable === true); })
+          .catch(() => { clearTimeout(t); resolve(false); });
+      });
+      networkTimeout.then((online) => {
+        if (online) {
+          // Stop native TTS before playing ElevenLabs
+          Speech.stop();
+          void elevenLabsSpeak(stepsText);
+        }
+        // If offline, native TTS is already playing — do nothing
+      });
+    }, 300);
+
+    // Try LLM in background
+    void generateAndSpeak();
+
+    return () => {
+      clearTimeout(speakTimer);
+      clearTimeout(elevenLabsTimer);
+      clearInterval(timer);
+      cancelLLM.current?.();
+    };
   }, []);
 
-  const handleSpeak = async () => {
-    const speaking = await Speech.isSpeakingAsync().catch(() => false);
-    if (speaking) {
-      await Speech.stop();
-      return;
-    }
-    Speech.speak(diseaseInfo.mitigationSteps, { language: 'en-US', rate: 0.8 });
+  /** ElevenLabs TTS (online only) */
+  const elevenLabsSpeak = async (text: string) => {
+    await Audio.setAudioModeAsync({
+      allowsRecordingIOS: false,
+      playsInSilentModeIOS: true,
+      playThroughEarpieceAndroid: false,
+    });
+    const res = await fetch(`${BACKEND_URL}/tts`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ text }),
+    });
+    if (!res.ok) throw new Error(`TTS HTTP ${res.status}`);
+    const { audio } = await res.json() as { audio: string };
+    const path = `${FileSystem.cacheDirectory}diag_tts.mp3`;
+    await FileSystem.writeAsStringAsync(path, audio, { encoding: FileSystem.EncodingType.Base64 });
+    const { sound } = await Audio.Sound.createAsync({ uri: path });
+    ttsSound.current = sound;
+    await sound.playAsync();
+    sound.setOnPlaybackStatusUpdate((s) => {
+      if (s.isLoaded && s.didJustFinish) {
+        sound.unloadAsync().catch(() => {});
+        ttsSound.current = null;
+        FileSystem.deleteAsync(path, { idempotent: true }).catch(() => {});
+      }
+    });
   };
 
-  const handleNotify = async () => {
-    setNotifying(true);
+  /** Re-speak steps (speaker button / LLM replay) */
+  const speakSteps = async (steps: string[]) => {
+    const text = steps.join('. ');
+    let online = false;
     try {
-      const loc = await Location.getCurrentPositionAsync({
-        accuracy: Location.Accuracy.Balanced,
-      }).catch(() => ({ coords: { latitude: 0, longitude: 0 } }));
-      await createReport({
-        diseaseId,
-        lat: loc.coords.latitude,
-        long: loc.coords.longitude,
-        sampleId: sampleId ?? '',
-        sampleLabel: diseaseInfo.label,
-        confidence,
-        imageUri,
-        isSynced: 0,
-      });
-      await syncPendingReports();
-      Alert.alert('Sent', 'Nearby farms have been notified.');
-    } catch {
-      Alert.alert('Error', 'Could not notify farms. Will retry when online.');
-    } finally {
-      setNotifying(false);
+      const net = await Network.getNetworkStateAsync();
+      online = net.isInternetReachable === true;
+    } catch { online = false; }
+
+    if (!online) {
+      Speech.speak(text, { rate: 0.9 });
+      return;
     }
+
+    try {
+      await elevenLabsSpeak(text);
+    } catch {
+      Speech.speak(text, { rate: 0.9 });
+    }
+  };
+
+  const parseSteps = (raw: string): [string, string, string] => {
+    const lines = raw.split('\n').map(l => l.replace(/^\d+\.\s*/, '').trim()).filter(Boolean);
+    const s = (i: number) => lines[i] ?? diseaseInfo.steps[i];
+    return [s(0), s(1), s(2)];
+  };
+
+  const generateAndSpeak = async () => {
+    // Try LLM in background — if it finishes, update steps and replay
+    if (!llmService.isReady()) return;
+
+    setIsGenerating(true);
+    const transcriptSection = conversationTranscript
+      ? `\n\nConversation with farmer:\n${conversationTranscript}`
+      : '';
+    const prompt =
+      `You are an agricultural expert. A farmer's crop has been diagnosed with ${diseaseInfo.label} (severity: ${diseaseInfo.severity}). ` +
+      `Observed symptoms: ${diseaseInfo.symptoms.map(s => s.label).join(', ')}.` +
+      transcriptSection +
+      `\n\nBased on all the above, give exactly 3 short, practical next steps numbered 1, 2, 3. Each step is one sentence and tailored to what the farmer described.`;
+
+    cancelLLM.current = llmService.generate(
+      prompt,
+      undefined,
+      (token) => setStreamingText(prev => prev + token),
+      async (full) => {
+        const steps = parseSteps(full);
+        setGeneratedSteps(steps);
+        setStreamingText('');
+        setIsGenerating(false);
+        // Stop current TTS and replay with generated steps
+        if (ttsSound.current) {
+          await ttsSound.current.stopAsync().catch(() => {});
+          await ttsSound.current.unloadAsync().catch(() => {});
+          ttsSound.current = null;
+        }
+        void speakSteps(steps);
+      },
+      () => {
+        setIsGenerating(false);
+      },
+    );
+  };
+
+  const handleSpeak = async () => {
+    // Stop any current speech (ElevenLabs or device TTS)
+    if (ttsSound.current) {
+      await ttsSound.current.stopAsync().catch(() => {});
+      await ttsSound.current.unloadAsync().catch(() => {});
+      ttsSound.current = null;
+      return;
+    }
+    if (await Speech.isSpeakingAsync()) {
+      Speech.stop();
+      return;
+    }
+    void speakSteps(generatedSteps);
+  };
+
+  const handleNotify = () => {
+    navigation.navigate('Notify', { diseaseId, confidence, imageUri, sampleId });
   };
 
   return (
@@ -178,33 +322,40 @@ export function DiagnosticScreen({ route, navigation }: Props) {
         {/* Spotted symptoms */}
         <Text style={styles.sectionTitle}>Spotted symptoms</Text>
         <View style={styles.symptomGrid}>
-          {diseaseInfo.symptoms.map((sym, i) => (
-            <View key={i} style={styles.symptomCard}>
-              {leafErrors[i] ? (
-                <View style={styles.leafPlaceholder} />
-              ) : (
+          {diseaseInfo.symptoms.map((sym, i) => {
+            const src = leafSources[sym.assetIndex] ?? LEAF_MODULES[1];
+            return (
+              <View key={i} style={styles.symptomCard}>
                 <Image
-                  source={LEAF_ASSETS[sym.assetIndex]}
+                  source={src}
                   style={styles.leafImage}
                   resizeMode="contain"
-                  onError={() => setLeafErrors((prev) => ({ ...prev, [i]: true }))}
                 />
-              )}
-              <Text style={styles.symptomLabel}>{sym.label}</Text>
-            </View>
-          ))}
+                <Text style={styles.symptomLabel}>{sym.label}</Text>
+              </View>
+            );
+          })}
         </View>
 
         {/* Next steps */}
         <Text style={styles.sectionTitle}>Next steps</Text>
-        {diseaseInfo.steps.map((step, i) => (
-          <View key={i} style={styles.stepCard}>
+        {isGenerating && streamingText ? (
+          <View style={styles.stepCard}>
             <View style={styles.stepCircle}>
-              <Text style={styles.stepNumber}>{i + 1}</Text>
+              <Ionicons name="flash-outline" size={14} color="#fff" />
             </View>
-            <Text style={styles.stepText}>{step}</Text>
+            <Text style={styles.stepText}>{streamingText}</Text>
           </View>
-        ))}
+        ) : (
+          generatedSteps.map((step, i) => (
+            <View key={i} style={styles.stepCard}>
+              <View style={styles.stepCircle}>
+                <Text style={styles.stepNumber}>{i + 1}</Text>
+              </View>
+              <Text style={styles.stepText}>{step}</Text>
+            </View>
+          ))
+        )}
 
         <View style={styles.bottomSpacer} />
       </ScrollView>
@@ -212,13 +363,12 @@ export function DiagnosticScreen({ route, navigation }: Props) {
       {/* ── Notify CTA ── */}
       <View style={styles.ctaWrapper}>
         <TouchableOpacity
-          style={[styles.ctaButton, notifying && styles.ctaDisabled]}
+          style={styles.ctaButton}
           onPress={handleNotify}
-          disabled={notifying}
           activeOpacity={0.85}
         >
           <Ionicons name="megaphone-outline" size={20} color="#fff" style={styles.ctaIcon} />
-          <Text style={styles.ctaText}>{notifying ? 'Sending…' : 'Notify nearby farms'}</Text>
+          <Text style={styles.ctaText}>Notify nearby farms</Text>
         </TouchableOpacity>
       </View>
     </SafeAreaView>
@@ -327,7 +477,7 @@ const styles = StyleSheet.create({
     width: CARD_WIDTH,
     backgroundColor: '#fff',
     borderRadius: 16,
-    padding: 12,
+    padding: 10,
     alignItems: 'center',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 1 },
@@ -336,16 +486,11 @@ const styles = StyleSheet.create({
     elevation: 2,
   },
   leafImage: {
-    width: 64,
-    height: 64,
+    width: CARD_WIDTH - 20,
+    height: CARD_WIDTH - 20,
+    borderRadius: 10,
     marginBottom: 8,
-  },
-  leafPlaceholder: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
-    backgroundColor: '#5c8a2e',
-    marginBottom: 8,
+    backgroundColor: '#e8f5e9',
   },
   symptomLabel: {
     fontSize: 12,

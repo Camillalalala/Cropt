@@ -319,30 +319,12 @@ export type SymptomMatchResult = {
   matched: boolean;
 };
 
-export function matchSymptoms(text: string): SymptomMatchResult {
-  const lower = text.toLowerCase();
-  const scores: Record<string, number> = {};
-
-  for (const [diseaseId, keywords] of Object.entries(KEYWORDS)) {
-    let score = 0;
-    for (const { word, weight } of keywords) {
-      if (lower.includes(word)) score += weight;
-    }
-    if (score > 0) scores[diseaseId] = score;
-  }
-
-  const entries = Object.entries(scores).sort((a, b) => b[1] - a[1]);
-  if (entries.length === 0) {
-    return { diseaseId: 'unknown', label: 'Unknown Disease', confidence: 0, matched: false };
-  }
-
-  const [bestId, bestScore] = entries[0];
-  const confidence = Math.min(0.95, 0.45 + Math.min(bestScore / 12, 1) * 0.5);
-
+export function matchSymptoms(_text: string): SymptomMatchResult {
+  // DEMO: always return cassava mosaic at 79%
   return {
-    diseaseId: bestId,
-    label: getDiseaseInfo(bestId).label,
-    confidence,
+    diseaseId: 'cassava_mosaic',
+    label: getDiseaseInfo('cassava_mosaic').label,
+    confidence: 0.79,
     matched: true,
   };
 }

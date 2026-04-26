@@ -16,8 +16,7 @@ export type ConvAICallbacks = {
   onError: (msg: string) => void;
 };
 
-const AGENT_ID = process.env.EXPO_PUBLIC_ELEVENLABS_AGENT_ID ?? '';
-const API_KEY = process.env.EXPO_PUBLIC_ELEVENLABS_API_KEY ?? '';
+const BACKEND_URL = process.env.EXPO_PUBLIC_BACKEND_URL ?? 'http://localhost:3000';
 
 // iOS: linear PCM WAV (strips header before sending to ElevenLabs)
 // Android: WAVE output with default encoder — works on Android 7+ for PCM
@@ -45,6 +44,7 @@ const RECORDING_OPTIONS: Audio.RecordingOptions = {
 
 export class ElevenLabsConvAI {
   private ws: WebSocket | null = null;
+  private conversationId: string | null = null;
   private recording: Audio.Recording | null = null;
   private sound: Audio.Sound | null = null;
   private pcmChunks: Uint8Array[] = [];
@@ -63,11 +63,6 @@ export class ElevenLabsConvAI {
     initialAudioPcmBase64?: string;
   }) {
     const { diseaseLabel, confidence, diseaseId, symptomDescription, pastScanSummary, initialAudioPcmBase64 } = params;
-    if (!AGENT_ID) {
-      this.cb.onError('EXPO_PUBLIC_ELEVENLABS_AGENT_ID is not configured.');
-      this.cb.onStatusChange('error');
-      return;
-    }
 
     const { status } = await Audio.requestPermissionsAsync();
     if (status !== 'granted') {
@@ -76,12 +71,33 @@ export class ElevenLabsConvAI {
       return;
     }
 
-    await Audio.setAudioModeAsync({ allowsRecordingIOS: true, playsInSilentModeIOS: true });
+    await Audio.setAudioModeAsync({
+      allowsRecordingIOS: true,
+      playsInSilentModeIOS: true,
+      playThroughEarpieceAndroid: false,
+    });
     this.cb.onStatusChange('connecting');
 
-    const url = API_KEY
-      ? `wss://api.elevenlabs.io/v1/convai/conversation?agent_id=${AGENT_ID}&xi-api-key=${API_KEY}`
-      : `wss://api.elevenlabs.io/v1/convai/conversation?agent_id=${AGENT_ID}`;
+    let agentId: string;
+    try {
+      const cfg = await fetch(`${BACKEND_URL}/start-session`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+      }).then(r => r.json()) as { agentId: string };
+      agentId = cfg.agentId;
+    } catch {
+      this.cb.onError('Could not reach backend. Check EXPO_PUBLIC_BACKEND_URL.');
+      this.cb.onStatusChange('error');
+      return;
+    }
+
+    if (!agentId) {
+      this.cb.onError('Backend did not return an agent ID.');
+      this.cb.onStatusChange('error');
+      return;
+    }
+
+    const url = `wss://api.elevenlabs.io/v1/convai/conversation?agent_id=${agentId}`;
 
     this.ws = new WebSocket(url);
 
@@ -141,6 +157,11 @@ export class ElevenLabsConvAI {
         this.cb.onUserText(user_transcript);
         break;
       }
+      case 'conversation_initiation_metadata': {
+        const meta = msg.conversation_initiation_metadata_event as { conversation_id: string };
+        this.conversationId = meta.conversation_id;
+        break;
+      }
       case 'interruption':
         this.pcmChunks = [];
         await this.sound?.stopAsync().catch(() => {});
@@ -163,6 +184,13 @@ export class ElevenLabsConvAI {
       encoding: FileSystem.EncodingType.Base64,
     });
 
+    // Switch to speaker mode for playback
+    await Audio.setAudioModeAsync({
+      allowsRecordingIOS: false,
+      playsInSilentModeIOS: true,
+      playThroughEarpieceAndroid: false,
+    });
+
     const { sound } = await Audio.Sound.createAsync({ uri: tmpPath });
     this.sound = sound;
     await sound.playAsync();
@@ -176,6 +204,14 @@ export class ElevenLabsConvAI {
     await sound.unloadAsync();
     this.sound = null;
     await FileSystem.deleteAsync(tmpPath, { idempotent: true }).catch(() => {});
+
+    // Switch back to recording mode for next user input
+    await Audio.setAudioModeAsync({
+      allowsRecordingIOS: true,
+      playsInSilentModeIOS: true,
+      playThroughEarpieceAndroid: false,
+    });
+
     this.cb.onStatusChange('ready');
   }
 
@@ -210,6 +246,11 @@ export class ElevenLabsConvAI {
       const pcmBase64 = uint8ArrayToBase64(pcmBytes);
 
       this.ws.send(JSON.stringify({ user_audio_chunk: pcmBase64 }));
+
+      // Send 500ms of silence so the server-side VAD detects end of speech
+      const silenceSamples = 16000 * 0.5; // 500ms at 16kHz
+      const silence = new Uint8Array(silenceSamples * 2); // 16-bit = 2 bytes/sample
+      this.ws.send(JSON.stringify({ user_audio_chunk: uint8ArrayToBase64(silence) }));
     } catch (e) {
       this.cb.onError('Failed to send audio. Please try again.');
     } finally {
@@ -221,8 +262,27 @@ export class ElevenLabsConvAI {
     await this.recording?.stopAndUnloadAsync().catch(() => {});
     this.recording = null;
     await this.sound?.stopAsync().catch(() => {});
+    await this.sound?.unloadAsync().catch(() => {});
     this.sound = null;
     this.pcmChunks = [];
+
+    // Reset audio mode so subsequent screens get clean speaker output
+    await Audio.setAudioModeAsync({
+      allowsRecordingIOS: false,
+      playsInSilentModeIOS: true,
+      playThroughEarpieceAndroid: false,
+    }).catch(() => {});
+
+    if (this.conversationId) {
+      // Fire-and-forget — backend waits 10s then fetches summary; don't block the UI
+      void fetch(`${BACKEND_URL}/end-session`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ conversationId: this.conversationId }),
+      }).catch(() => {});
+      this.conversationId = null;
+    }
+
     this.ws?.close();
     this.ws = null;
   }

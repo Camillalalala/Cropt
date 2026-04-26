@@ -1,0 +1,19 @@
+{
+  "name": "cropopt-backend",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "android": "expo run:android",
+    "ios": "expo run:ios"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7",
+    "elevenlabs": "^1.59.0",
+    "express": "^4.21.2",
+    "expo": "~54.0.33",
+    "react": "19.1.0",
+    "react-native": "0.81.5"
+  },
+  "version": "1.0.0"
+}

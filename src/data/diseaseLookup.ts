@@ -64,6 +64,25 @@ export const diseaseLookup: Record<string, DiseaseLookupEntry> = {
       'Good news! Your plant looks healthy.\n\nWhat to do:\n- Keep watering regularly\n- Check your plants every week for any new spots or color changes\n- Keep your field clean of old leaves and weeds',
   },
 
+  // ── Demo: Cassava ───────────────────────────────────────────────────
+  cassava_mosaic: {
+    label: 'Cassava Mosaic Disease',
+    severity: 'high',
+    symptoms: [
+      { label: 'Yellow-green mosaic pattern on leaves', assetIndex: 1 },
+      { label: 'Distorted and twisted leaf shape', assetIndex: 2 },
+      { label: 'Stunted plant growth', assetIndex: 3 },
+      { label: 'Reduced tuber size and yield', assetIndex: 4 },
+    ],
+    steps: [
+      'Remove and burn all infected plants immediately to prevent the whitefly from spreading the virus further',
+      'Plant only certified virus-free cassava cuttings from a trusted source for your next crop',
+      'Control whitefly populations by applying insecticide from your agro shop and introduce natural predators like ladybugs',
+    ],
+    mitigationSteps:
+      'Signs to look for: Yellow and green mosaic pattern on leaves. Leaves may be twisted, small, or deformed. Plants are stunted and produce fewer tubers.\n\nWhat to do:\n- Pull out and burn all sick plants right away\n- Do not use cuttings from sick plants\n- Control whiteflies - they spread this virus\n- Plant certified clean cuttings next season\n- Ask for insecticide for whiteflies at your agro shop',
+  },
+
   // ── PlantVillage 38-class entries ──────────────────────────────────
 
   // Apple
