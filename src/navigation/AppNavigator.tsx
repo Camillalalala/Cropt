@@ -6,6 +6,8 @@ import { NotifyScreen } from '../screens/NotifyScreen';
 import { CompletionScreen } from '../screens/CompletionScreen';
 import { FarmerReportsScreen } from '../components/FarmerReportsScreen';
 import { ExpoGoMapScreen } from '../components/ExpoGoMapScreen';
+import { VoiceScreen } from '../screens/VoiceScreen';
+import { VoiceAnalyzingScreen } from '../screens/VoiceAnalyzingScreen';
 
 export type RootStackParamList = {
   Home: undefined;
@@ -25,6 +27,8 @@ export type RootStackParamList = {
   Completion: undefined;
   LocalReports: undefined;
   Map: undefined;
+  Voice: undefined;
+  VoiceAnalyzing: { agentSummary: string };
 };
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -66,6 +70,16 @@ export function AppNavigator() {
         name="Map"
         component={ExpoGoMapScreen}
         options={{ title: 'Community Disease Map' }}
+      />
+      <Stack.Screen
+        name="Voice"
+        component={VoiceScreen}
+        options={{ headerShown: false }}
+      />
+      <Stack.Screen
+        name="VoiceAnalyzing"
+        component={VoiceAnalyzingScreen}
+        options={{ headerShown: false }}
       />
     </Stack.Navigator>
   );

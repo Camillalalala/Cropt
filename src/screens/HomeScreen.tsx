@@ -216,10 +216,8 @@ export function HomeScreen({ navigation }: Props) {
 
   const handleCenterPress = () => {
     if (networkOnline) {
-      // Online: open voice agent
-      setSymptomDescription('');
-      setInitialAudioPcmBase64(undefined);
-      setShowVoiceAgent(true);
+      // Online: open full-screen voice conversation
+      navigation.navigate('Voice');
     } else {
       // Offline: open camera
       handleOpenCamera();
