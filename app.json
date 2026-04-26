@@ -19,7 +19,8 @@
         "NSMicrophoneUsageDescription": "CropOpt needs microphone access so you can speak with the agronomist about your scan results.",
         "NSPhotoLibraryUsageDescription": "TerraSignal uses your photo library so you can attach crop images for offline diagnosis.",
         "NSPhotoLibraryAddUsageDescription": "TerraSignal can save annotated crop scan images when you export field evidence."
-      }
+      },
+      "bundleIdentifier": "com.anonymous.cropopt"
     },
     "android": {
       "adaptiveIcon": {
@@ -29,11 +30,6 @@
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "permissions": [
-        "android.permission.CAMERA",
-        "android.permission.RECORD_AUDIO",
-        "android.permission.MODIFY_AUDIO_SETTINGS",
-        "android.permission.ACCESS_COARSE_LOCATION",
-        "android.permission.ACCESS_FINE_LOCATION",
         "android.permission.CAMERA",
         "android.permission.RECORD_AUDIO",
         "android.permission.MODIFY_AUDIO_SETTINGS",

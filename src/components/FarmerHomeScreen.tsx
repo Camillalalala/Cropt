@@ -27,6 +27,7 @@ import type { RootStackParamList } from '../navigation/AppNavigator';
 import { classifierService, type ClassificationResult } from '../services/ClassifierService';
 import { syncPendingReports } from '../services/SyncService';
 import { registerForPushNotifications, saveDeviceToken } from '../services/NotificationService';
+import { LLMChatModal } from '../components/LLMChatModal';
 import type { LocalReport } from '../types/report';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
@@ -78,6 +79,9 @@ export function FarmerHomeScreen({ navigation }: Props) {
   const [showDosageCalc, setShowDosageCalc] = useState(false);
   const [symptomDescription, setSymptomDescription] = useState('');
   const [initialAudioPcmBase64, setInitialAudioPcmBase64] = useState<string | undefined>();
+  const [modelDownloadProgress, setModelDownloadProgress] = useState<number | null>(null);
+  const [isModelReady, setIsModelReady] = useState(false);
+  const [showLLMChat, setShowLLMChat] = useState(false);
 
   useEffect(() => {
     let intervalId: NodeJS.Timeout;
@@ -112,6 +116,20 @@ export function FarmerHomeScreen({ navigation }: Props) {
     } catch (error) {
       console.log('Network listener not available, using periodic checks');
     }
+
+    // Initialize ML classifier model
+    void (async () => {
+      try {
+        await classifierService.initialize((progress) => {
+          setModelDownloadProgress(progress);
+        });
+        setIsModelReady(classifierService.isReady());
+        setModelDownloadProgress(null);
+      } catch (error) {
+        console.error('Model init error:', error);
+        setModelDownloadProgress(null);
+      }
+    })();
 
     // Initialize push notifications and location
     void (async () => {
@@ -241,8 +259,13 @@ export function FarmerHomeScreen({ navigation }: Props) {
 
     try {
       setIsSaving(true);
-      await classifierService.initialize();
+      if (!classifierService.isReady()) {
+        await classifierService.initialize();
+        setIsModelReady(classifierService.isReady());
+      }
       const result = await classifierService.classifyLeafImage(pickedImageUri, selectedSample.id);
+      // Simulate processing delay so user sees the analysis is working
+      await new Promise(resolve => setTimeout(resolve, 2000));
       const diseaseInfo = getDiseaseInfo(result.diseaseId);
 
       await createReport({
@@ -327,6 +350,18 @@ export function FarmerHomeScreen({ navigation }: Props) {
           </TouchableOpacity>
         </View>
         
+        {/* MODEL DOWNLOAD PROGRESS */}
+        {modelDownloadProgress != null && (
+          <View style={styles.progressContainer}>
+            <Text style={styles.progressLabel}>
+              Downloading AI model... {(modelDownloadProgress * 100).toFixed(0)}%
+            </Text>
+            <View style={styles.progressBarBg}>
+              <View style={[styles.progressBarFill, { width: `${modelDownloadProgress * 100}%` }]} />
+            </View>
+          </View>
+        )}
+
         {/* LARGE ICON NAVIGATION */}
         <View style={styles.iconNavGrid}>
           <TouchableOpacity
@@ -572,6 +607,14 @@ export function FarmerHomeScreen({ navigation }: Props) {
               </TouchableOpacity>
             )}
           </View>
+
+          <TouchableOpacity
+            style={styles.askQuestionButton}
+            onPress={() => setShowLLMChat(true)}
+          >
+            <Ionicons name="chatbubbles" size={20} color="#166534" />
+            <Text style={styles.askQuestionText}>Ask a Question (Offline AI)</Text>
+          </TouchableOpacity>
         </View>
       ) : null}
 
@@ -627,6 +670,14 @@ export function FarmerHomeScreen({ navigation }: Props) {
         visible={showDosageCalc}
         diseaseId={currentDiseaseId}
         onClose={() => setShowDosageCalc(false)}
+      />
+
+      <LLMChatModal
+        visible={showLLMChat}
+        diseaseLabel={currentDiseaseLabel || 'Unknown Disease'}
+        diseaseId={currentDiseaseId || 'unknown'}
+        confidence={latestResult?.confidence ?? 0}
+        onClose={() => setShowLLMChat(false)}
       />
     </ScrollView>
   );
@@ -1044,5 +1095,40 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#374151',
     flex: 1,
+  },
+  progressContainer: {
+    gap: 6,
+  },
+  progressLabel: {
+    color: '#dcfce7',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  progressBarBg: {
+    height: 8,
+    backgroundColor: '#ffffff30',
+    borderRadius: 4,
+    overflow: 'hidden',
+  },
+  progressBarFill: {
+    height: '100%',
+    backgroundColor: '#4ade80',
+    borderRadius: 4,
+  },
+  askQuestionButton: {
+    backgroundColor: '#f0fdf4',
+    borderWidth: 2,
+    borderColor: '#166534',
+    paddingVertical: 14,
+    borderRadius: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 8,
+  },
+  askQuestionText: {
+    color: '#166534',
+    fontSize: 16,
+    fontWeight: '700',
   },
 });
