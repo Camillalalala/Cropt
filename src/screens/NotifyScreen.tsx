@@ -5,6 +5,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   TouchableOpacity,
   View,
 } from 'react-native';
@@ -16,6 +17,7 @@ import { getDiseaseInfo } from '../data/diseaseLookup';
 import { createReport } from '../db/database';
 import { syncPendingReports } from '../services/SyncService';
 import { ZeticBridge } from '../services/ZeticBridge';
+import { sendWhatsAppAlert } from '../services/WhatsAppService';
 import type { RootStackParamList } from '../navigation/AppNavigator';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Notify'>;
@@ -65,6 +67,7 @@ export function NotifyScreen({ route, navigation }: Props) {
   const [selected, setSelected] = useState<Set<Channel>>(
     new Set(['inapp', 'whatsapp'])
   );
+  const [phoneNumber, setPhoneNumber] = useState('');
   const [agentMessage, setAgentMessage] = useState('');
   const [isGenerating, setIsGenerating] = useState(false);
   const [sending, setSending] = useState(false);
@@ -165,8 +168,7 @@ export function NotifyScreen({ route, navigation }: Props) {
         await syncPendingReports();
       }
       if (selected.has('whatsapp')) {
-        // TODO: Twilio WhatsApp integration
-        console.log('[WhatsApp stub] Would send:', agentMessage);
+        await sendWhatsAppAlert(phoneNumber.trim(), agentMessage);
       }
       navigation.replace('Completion');
     } catch {
@@ -217,13 +219,22 @@ export function NotifyScreen({ route, navigation }: Props) {
           }
         >
           {whatsappSelected && (
-            <View style={styles.bubble}>
-              <Text style={styles.bubbleAgent}>CropOpt Agent</Text>
-              <Text style={styles.bubbleText}>
-                {agentMessage}
-              </Text>
-              <Text style={styles.bubbleTime}>Just now ✓✓</Text>
-            </View>
+            <>
+              <TextInput
+                placeholder="+254 712 345 678"
+                keyboardType="phone-pad"
+                value={phoneNumber}
+                onChangeText={setPhoneNumber}
+                style={styles.phoneInput}
+              />
+              <View style={styles.bubble}>
+                <Text style={styles.bubbleAgent}>CropOpt Agent</Text>
+                <Text style={styles.bubbleText}>
+                  {agentMessage}
+                </Text>
+                <Text style={styles.bubbleTime}>Just now ✓✓</Text>
+              </View>
+            </>
           )}
         </OptionCard>
 
@@ -348,6 +359,16 @@ const styles = StyleSheet.create({
   waIconBg: {
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  phoneInput: {
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: '#ccc',
+    borderRadius: 10,
+    padding: 10,
+    marginTop: 10,
+    fontSize: 14,
+    color: '#1a1a1a',
   },
   bubble: {
     marginTop: 14,
